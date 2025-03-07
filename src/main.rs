@@ -1,32 +1,51 @@
-use std::io;
+use std::{io, vec};
 
 fn main() -> io::Result<()> {
-    let mut out = io::stdout();
     loop {
         let mut buffer = String::new();
         let _ = io::stdin().read_line(&mut buffer)?;
         let command = to_uci_command_in(buffer.trim_end()).unwrap();
-        execute_command(command, &mut out);
+        let actions = process_command(command);
+        for action in actions {
+            match action {
+                Action::SendMessage(message) => println!("{message}"),
+                Action::Quit => return Ok(()),
+            }
+        }
     }
+}
+
+#[derive(Debug, PartialEq)]
+enum Action {
+    SendMessage(String),
+    Quit,
 }
 
 #[derive(PartialEq, Debug)]
 enum UciCommandIn {
     Uci,
+    Quit,
 }
 
 fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
     match input {
         "uci" => Ok(UciCommandIn::Uci),
+        "quit" => Ok(UciCommandIn::Quit),
         _ => Err("Unsupported command".to_string()),
     }
 }
 
-fn execute_command(command: UciCommandIn, out: &mut impl io::Write) {
+fn process_command(command: UciCommandIn) -> Vec<Action> {
     match command {
         UciCommandIn::Uci => {
-            out.write_all("id name chessticot\n".as_bytes()).unwrap();
-            out.write_all("id author Simisticot\n".as_bytes()).unwrap();
+            vec![
+                Action::SendMessage("id name chessticot".to_string()),
+                Action::SendMessage("id author Simisticot".to_string()),
+                Action::SendMessage("uciok".to_string()),
+            ]
+        }
+        UciCommandIn::Quit => {
+            vec![Action::Quit]
         }
     }
 }
@@ -46,11 +65,25 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_quit_command() {
+        assert!(to_uci_command_in("quit").is_ok_and(|command| command == UciCommandIn::Quit));
+    }
+
+    #[test]
     fn responds_to_uci_command() {
-        let mut out: Vec<u8> = Vec::new();
+        let actions = process_command(UciCommandIn::Uci);
+        assert_eq!(
+            actions,
+            vec![
+                Action::SendMessage("id name chessticot".to_string()),
+                Action::SendMessage("id author Simisticot".to_string()),
+                Action::SendMessage("uciok".to_string()),
+            ]
+        );
+    }
 
-        execute_command(UciCommandIn::Uci, &mut out);
-
-        assert_eq!(&out, b"id name chessticot\nid author Simisticot\n");
+    #[test]
+    fn quits_on_quit_command() {
+        assert_eq!(process_command(UciCommandIn::Quit), vec![Action::Quit]);
     }
 }
