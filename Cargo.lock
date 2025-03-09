@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "libchessticot"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20235b1d410e58af15ab763fab880ccbd5334df93294a5cbc5ef56e7c0fda351"
+checksum = "68b07667183dc963141bf203aafed6c46d8743c0ed51526044f35a61af4bdc28"
 
 [[package]]
 name = "ucisticot"

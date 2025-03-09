@@ -1,27 +1,55 @@
-use std::{io, vec};
+use std::{
+    io::{self, BufRead, Write},
+    vec,
+};
 
-use libchessticot::{BetterEvaluationPlayer, Player, Position};
+use libchessticot::{BetterEvaluationPlayer, ChessMove, Player, Position};
 
 fn main() -> io::Result<()> {
+    let stdin = io::stdin();
+    let input = stdin.lock();
+    let output = io::stdout();
+    server(input, output)
+}
+
+fn server<R, W>(mut reader: R, mut writer: W) -> io::Result<()>
+where
+    R: BufRead,
+    W: Write,
+{
     let mut current_position: Option<Position> = None;
+    let mut best_move_for_current_search: Option<ChessMove>;
     let engine = BetterEvaluationPlayer {};
     loop {
         let mut buffer = String::new();
-        let _ = io::stdin().read_line(&mut buffer)?;
+        let _ = reader.read_line(&mut buffer)?;
         let command = to_uci_command_in(buffer.trim_end()).unwrap();
         let actions = process_command(command);
         for action in actions {
             match action {
-                Action::SendMessage(message) => println!("{message}"),
+                Action::SendMessage(message) => writeln!(&mut writer, "{message}").unwrap(),
                 Action::Quit => return Ok(()),
                 Action::SetPosition(position) => current_position = Some(position),
                 Action::SendBestMove => {
-                    let best_move = engine.offer_move(
-                        &current_position
-                            .clone()
-                            .expect("should initialize position before asking for move"),
+                    best_move_for_current_search = Some(
+                        engine.offer_move(
+                            &current_position
+                                .clone()
+                                .expect("should initialize position before asking for move"),
+                        ),
                     );
-                    println!("bestmove {best_move:?}");
+                    writeln!(
+                        &mut writer,
+                        "bestmove {}",
+                        best_move_for_current_search
+                            .expect("just computed best move")
+                            .to_uci_long(
+                                &current_position
+                                    .clone()
+                                    .expect("position should be initialized")
+                            )
+                    )
+                    .unwrap()
                 }
             }
         }
@@ -59,10 +87,11 @@ fn position_from_command(command: &str) -> Position {
     let command = params.next().unwrap();
     assert!(command == "position");
     let mode = params.next().unwrap();
-    let starting_position: Position = match mode {
+    let mut position: Position = match mode {
         "startpos" => Position::initial(),
         "fen" => {
             let fen: String = params
+                .clone()
                 .take(6)
                 .fold(String::new(), |a, b| a + " " + b)
                 .trim_start()
@@ -71,7 +100,15 @@ fn position_from_command(command: &str) -> Position {
         }
         _ => panic!("unsupported position mode"),
     };
-    starting_position
+    while let Some(param) = params.next() {
+        if param == "moves" {
+            for param in params.by_ref() {
+                let chess_move = ChessMove::from_uci_long(param, &position);
+                position = position.after_move(&chess_move);
+            }
+        }
+    }
+    position
 }
 
 fn process_command(command: UciCommandIn) -> Vec<Action> {
@@ -121,6 +158,29 @@ mod tests {
     }
 
     #[test]
+    fn can_parse_initial_position_with_additional_moves() {
+        assert_eq!(
+            to_uci_command_in("position startpos moves e2e4 e7e5").unwrap(),
+            UciCommandIn::Position(Position::from_fen(
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 1"
+            ))
+        )
+    }
+
+    #[test]
+    fn can_parse_fen_position_with_additional_moves() {
+        assert_eq!(
+            to_uci_command_in(
+                "position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 moves e2e4 e7e5"
+            )
+            .unwrap(),
+            UciCommandIn::Position(Position::from_fen(
+                "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 1"
+            ))
+        )
+    }
+
+    #[test]
     fn can_parse_position_command_with_fen() {
         assert!(
             to_uci_command_in(
@@ -149,5 +209,16 @@ mod tests {
     #[test]
     fn quits_on_quit_command() {
         assert_eq!(process_command(UciCommandIn::Quit), vec![Action::Quit]);
+    }
+
+    #[test]
+    fn get_first_move() {
+        let input = b"uci\nposition startpos\ngo\nquit\n";
+        let mut output = Vec::new();
+        server(&input[..], &mut output).expect("should not fail");
+        assert_eq!(
+            "id name chessticot\nid author Simisticot\nuciok\nbestmove e2e4\n",
+            String::from_utf8(output).expect("please :)")
+        )
     }
 }
