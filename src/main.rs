@@ -18,7 +18,7 @@ where
     W: Write,
 {
     let mut current_position: Option<Position> = None;
-    let mut best_move_for_current_search: Option<ChessMove>;
+    let mut best_move_for_current_search: Option<ChessMove> = None;
     let engine = BetterEvaluationPlayer {};
     loop {
         let mut buffer = String::new();
@@ -30,27 +30,28 @@ where
                 Action::SendMessage(message) => writeln!(&mut writer, "{message}").unwrap(),
                 Action::Quit => return Ok(()),
                 Action::SetPosition(position) => current_position = Some(position),
-                Action::SendBestMove => {
+                Action::FindBestMove => {
                     best_move_for_current_search = Some(
                         engine.offer_move(
                             &current_position
                                 .clone()
                                 .expect("should initialize position before asking for move"),
                         ),
-                    );
-                    writeln!(
-                        &mut writer,
-                        "bestmove {}",
-                        best_move_for_current_search
-                            .expect("just computed best move")
-                            .to_uci_long(
-                                &current_position
-                                    .clone()
-                                    .expect("position should be initialized")
-                            )
                     )
-                    .unwrap()
                 }
+                Action::SendBestMove => writeln!(
+                    &mut writer,
+                    "bestmove {}",
+                    best_move_for_current_search
+                        .clone()
+                        .expect("should have just computed best move")
+                        .to_uci_long(
+                            &current_position
+                                .clone()
+                                .expect("position should be initialized")
+                        )
+                )
+                .unwrap(),
             }
         }
     }
@@ -61,6 +62,7 @@ enum Action {
     SendMessage(String),
     SetPosition(Position),
     Quit,
+    FindBestMove,
     SendBestMove,
 }
 
@@ -70,6 +72,7 @@ enum UciCommandIn {
     Position(Position),
     Quit,
     Go,
+    Stop,
 }
 
 fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
@@ -78,6 +81,7 @@ fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
         "quit" => Ok(UciCommandIn::Quit),
         "position" => Ok(UciCommandIn::Position(position_from_command(input))),
         "go" => Ok(UciCommandIn::Go),
+        "stop" => Ok(UciCommandIn::Stop),
         _ => Err("Unsupported command".to_string()),
     }
 }
@@ -113,20 +117,17 @@ fn position_from_command(command: &str) -> Position {
 
 fn process_command(command: UciCommandIn) -> Vec<Action> {
     match command {
-        UciCommandIn::Uci => {
-            vec![
-                Action::SendMessage("id name chessticot".to_string()),
-                Action::SendMessage("id author Simisticot".to_string()),
-                Action::SendMessage("uciok".to_string()),
-            ]
-        }
-        UciCommandIn::Quit => {
-            vec![Action::Quit]
-        }
+        UciCommandIn::Uci => vec![
+            Action::SendMessage("id name chessticot".to_string()),
+            Action::SendMessage("id author Simisticot".to_string()),
+            Action::SendMessage("uciok".to_string()),
+        ],
+
+        UciCommandIn::Quit => vec![Action::Quit],
         UciCommandIn::Position(position) => vec![Action::SetPosition(position)],
-        UciCommandIn::Go => {
-            vec![Action::SendBestMove]
-        }
+        UciCommandIn::Go => vec![Action::FindBestMove],
+
+        UciCommandIn::Stop => vec![Action::SendBestMove],
     }
 }
 
@@ -213,7 +214,7 @@ mod tests {
 
     #[test]
     fn get_first_move() {
-        let input = b"uci\nposition startpos\ngo\nquit\n";
+        let input = b"uci\nposition startpos\ngo\nstop\nquit\n";
         let mut output = Vec::new();
         server(&input[..], &mut output).expect("should not fail");
         assert_eq!(
