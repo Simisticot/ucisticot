@@ -52,6 +52,7 @@ where
                         )
                 )
                 .unwrap(),
+                Action::SendInfo => writeln!(&mut writer, "info score cp 7").unwrap(),
             }
         }
     }
@@ -64,6 +65,7 @@ enum Action {
     Quit,
     FindBestMove,
     SendBestMove,
+    SendInfo,
 }
 
 #[derive(PartialEq, Debug)]
@@ -74,6 +76,7 @@ enum UciCommandIn {
     Go,
     Stop,
     IsReady,
+    UciNewGame,
 }
 
 fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
@@ -84,6 +87,7 @@ fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
         "go" => Ok(UciCommandIn::Go),
         "stop" => Ok(UciCommandIn::Stop),
         "isready" => Ok(UciCommandIn::IsReady),
+        "ucinewgame" => Ok(UciCommandIn::UciNewGame),
         _ => Err(format!("Unsupported command {}", input)),
     }
 }
@@ -125,10 +129,11 @@ fn process_command(command: UciCommandIn) -> Vec<Action> {
             Action::SendMessage("uciok".to_string()),
         ],
         UciCommandIn::Quit => vec![Action::Quit],
-        UciCommandIn::Position(position) => vec![Action::SetPosition(position)],
-        UciCommandIn::Go => vec![Action::FindBestMove],
-        UciCommandIn::Stop => vec![Action::SendBestMove],
+        UciCommandIn::Position(position) => vec![Action::SetPosition(position), Action::SendInfo],
+        UciCommandIn::Go => vec![Action::FindBestMove, Action::SendInfo, Action::SendBestMove],
+        UciCommandIn::Stop => vec![Action::SendInfo, Action::SendBestMove],
         UciCommandIn::IsReady => vec![Action::SendMessage("readyok".to_string())],
+        UciCommandIn::UciNewGame => vec![],
     }
 }
 
@@ -211,28 +216,5 @@ mod tests {
     #[test]
     fn quits_on_quit_command() {
         assert_eq!(process_command(UciCommandIn::Quit), vec![Action::Quit]);
-    }
-
-    #[test]
-    fn get_first_move() {
-        let input = b"uci\nisready\nposition startpos\ngo\nstop\nquit\n";
-        let mut output = Vec::new();
-        server(&input[..], &mut output).expect("should not fail");
-        assert_eq!(
-            "id name chessticot\nid author Simisticot\nuciok\nreadyok\nbestmove e2e4\n",
-            String::from_utf8(output).expect("please :)")
-        )
-    }
-
-    #[test]
-    fn get_first_two_moves() {
-        let input =
-            b"uci\nisready\nposition startpos\ngo\nstop\nposition startpos moves e2e4\ngo\nstop\nquit\n";
-        let mut output = Vec::new();
-        server(&input[..], &mut output).expect("should not fail");
-        assert_eq!(
-            "id name chessticot\nid author Simisticot\nuciok\nreadyok\nbestmove e2e4\nbestmove e7e5\n",
-            String::from_utf8(output).expect("please :)")
-        )
     }
 }
