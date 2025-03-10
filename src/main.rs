@@ -73,6 +73,7 @@ enum UciCommandIn {
     Quit,
     Go,
     Stop,
+    IsReady,
 }
 
 fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
@@ -82,7 +83,8 @@ fn to_uci_command_in(input: &str) -> Result<UciCommandIn, String> {
         "position" => Ok(UciCommandIn::Position(position_from_command(input))),
         "go" => Ok(UciCommandIn::Go),
         "stop" => Ok(UciCommandIn::Stop),
-        _ => Err("Unsupported command".to_string()),
+        "isready" => Ok(UciCommandIn::IsReady),
+        _ => Err(format!("Unsupported command {}", input)),
     }
 }
 
@@ -122,12 +124,11 @@ fn process_command(command: UciCommandIn) -> Vec<Action> {
             Action::SendMessage("id author Simisticot".to_string()),
             Action::SendMessage("uciok".to_string()),
         ],
-
         UciCommandIn::Quit => vec![Action::Quit],
         UciCommandIn::Position(position) => vec![Action::SetPosition(position)],
         UciCommandIn::Go => vec![Action::FindBestMove],
-
         UciCommandIn::Stop => vec![Action::SendBestMove],
+        UciCommandIn::IsReady => vec![Action::SendMessage("readyok".to_string())],
     }
 }
 
@@ -214,11 +215,23 @@ mod tests {
 
     #[test]
     fn get_first_move() {
-        let input = b"uci\nposition startpos\ngo\nstop\nquit\n";
+        let input = b"uci\nisready\nposition startpos\ngo\nstop\nquit\n";
         let mut output = Vec::new();
         server(&input[..], &mut output).expect("should not fail");
         assert_eq!(
-            "id name chessticot\nid author Simisticot\nuciok\nbestmove e2e4\n",
+            "id name chessticot\nid author Simisticot\nuciok\nreadyok\nbestmove e2e4\n",
+            String::from_utf8(output).expect("please :)")
+        )
+    }
+
+    #[test]
+    fn get_first_two_moves() {
+        let input =
+            b"uci\nisready\nposition startpos\ngo\nstop\nposition startpos moves e2e4\ngo\nstop\nquit\n";
+        let mut output = Vec::new();
+        server(&input[..], &mut output).expect("should not fail");
+        assert_eq!(
+            "id name chessticot\nid author Simisticot\nuciok\nreadyok\nbestmove e2e4\nbestmove e7e5\n",
             String::from_utf8(output).expect("please :)")
         )
     }
